@@ -31,11 +31,20 @@ def _get_json(url, retries=5, timeout=90):
     for tentativa in range(1, retries + 1):
         try:
             r = requests.get(url, headers=HEADERS, timeout=timeout)
+            if r.status_code == 404:
+                print(f"  série/intervalo inexistente (404). Retornando vazio.")
+                return []
             r.raise_for_status()
             if not r.text.strip():
-                raise ValueError("resposta vazia")
+                print(f"  resposta vazia do servidor. Tratando como 'sem dados'.")
+                return []
             return r.json()
-        except Exception as e:
+        except (requests.exceptions.ReadTimeout,
+                requests.exceptions.ConnectionError) as e:
+            espera = 5 * tentativa
+            print(f"  tentativa {tentativa}/{retries} falhou ({e.__class__.__name__}). Esperando {espera}s...")
+            time.sleep(espera)
+        except (requests.exceptions.HTTPError, ValueError) as e:
             espera = 5 * tentativa
             print(f"  tentativa {tentativa}/{retries} falhou ({e.__class__.__name__}: {e}). Esperando {espera}s...")
             time.sleep(espera)
@@ -73,6 +82,10 @@ def get_bcb(code):
         pedacos.extend(data)
         inicio = prox + relativedelta(days=1)
 
+    if not pedacos:
+        print(f"  AVISO: série {code} não retornou dados em nenhum período.")
+        return pd.Series(dtype=float)
+
     s = pd.Series({r["data"]: float(r["valor"].replace(",", ".")) for r in pedacos})
     s.index = pd.to_datetime(s.index, dayfirst=True)
     s = s[~s.index.duplicated(keep="first")].sort_index()
@@ -81,6 +94,7 @@ def get_bcb(code):
 
 print("Baixando FRED...")
 fred = {k: get_fred(v) for k, v in FRED_SERIES.items()}
+
 print("Baixando BCB...")
 bcb = {k: get_bcb(v) for k, v in BCB_SERIES.items()}
 
@@ -90,8 +104,12 @@ df_bra = pd.DataFrame(bcb).resample("ME").last()
 
 def describe_pair(sa, nsa, label):
     print(f"\n--- {label} ---")
-    print(f"Correlação SA vs NSA : {sa.corr(nsa):.4f}")
-    diff = (sa - nsa).dropna()
+    sa_aligned, nsa_aligned = sa.align(nsa, join="inner")
+    if sa_aligned.empty or nsa_aligned.empty:
+        print("  (sem dados sobrepostos para comparar)")
+        return
+    print(f"Correlação SA vs NSA : {sa_aligned.corr(nsa_aligned):.4f}")
+    diff = (sa_aligned - nsa_aligned).dropna()
     print(f"Diferença média      : {diff.mean():.4f}")
     print(f"Desvio da diferença  : {diff.std():.4f}")
 
@@ -101,10 +119,17 @@ describe_pair(df_bra["ind_prod_sa"], df_bra["ind_prod_nsa"], "Prod. Industrial B
 
 fig, axes = plt.subplots(2, 2, figsize=(14, 8))
 fig.suptitle("Acompanhamento de Atividade e Juros — Brasil e EUA")
+
 df_usa[["ind_prod_sa", "ind_prod_nsa"]].plot(ax=axes[0, 0], title="Prod. Industrial EUA")
+axes[0, 0].legend(["Ajustada", "Não Ajustada"])
+
 df_usa["fed_funds"].plot(ax=axes[0, 1], title="Fed Funds (%)", color="firebrick")
+
 df_bra[["ind_prod_sa", "ind_prod_nsa"]].plot(ax=axes[1, 0], title="Prod. Industrial Brasil")
+axes[1, 0].legend(["Ajustada", "Não Ajustada"])
+
 df_bra["selic"].plot(ax=axes[1, 1], title="Selic (% a.a.)", color="seagreen")
+
 plt.tight_layout()
 plt.savefig("relatorio.png", dpi=150)
 
@@ -114,4 +139,5 @@ with pd.ExcelWriter("relatorio_atividade_juros.xlsx", engine="openpyxl") as writ
 
 df_usa.to_csv("eua.csv")
 df_bra.to_csv("brasil.csv")
+
 print("\nArquivos gerados com sucesso.")
