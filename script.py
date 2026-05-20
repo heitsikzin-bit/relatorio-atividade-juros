@@ -1,4 +1,5 @@
 import os
+import time
 import pandas as pd
 import requests
 import matplotlib.pyplot as plt
@@ -20,6 +21,21 @@ START_DATE = "2000-01-01"
 END_DATE   = datetime.today().strftime("%Y-%m-%d")
 
 
+def _request_with_retry(url, retries=5, timeout=90):
+    for tentativa in range(1, retries + 1):
+        try:
+            r = requests.get(url, timeout=timeout)
+            r.raise_for_status()
+            return r
+        except (requests.exceptions.ReadTimeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.HTTPError) as e:
+            espera = 5 * tentativa
+            print(f"  tentativa {tentativa}/{retries} falhou ({e.__class__.__name__}). Esperando {espera}s...")
+            time.sleep(espera)
+    raise RuntimeError(f"Falhou após {retries} tentativas: {url}")
+
+
 def get_fred(series_id):
     url = (
         f"https://api.stlouisfed.org/fred/series/observations"
@@ -27,7 +43,7 @@ def get_fred(series_id):
         f"&observation_start={START_DATE}&observation_end={END_DATE}"
         f"&file_type=json"
     )
-    data = requests.get(url, timeout=30).json()["observations"]
+    data = _request_with_retry(url).json()["observations"]
     s = pd.Series({o["date"]: float(o["value"]) for o in data if o["value"] != "."})
     s.index = pd.to_datetime(s.index)
     return s
@@ -40,7 +56,7 @@ def get_bcb(code):
         f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{code}/dados"
         f"?formato=json&dataInicial={di}&dataFinal={df}"
     )
-    data = requests.get(url, timeout=30).json()
+    data = _request_with_retry(url).json()
     s = pd.Series({r["data"]: float(r["valor"].replace(",", ".")) for r in data})
     s.index = pd.to_datetime(s.index, dayfirst=True)
     return s
