@@ -4,8 +4,14 @@ import pandas as pd
 import requests
 import matplotlib.pyplot as plt
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 FRED_API_KEY = os.environ["FRED_API_KEY"]
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (relatorio-eesp-quant)",
+    "Accept": "application/json",
+}
 
 FRED_SERIES = {
     "ind_prod_sa":  "INDPRO",
@@ -21,17 +27,17 @@ START_DATE = "2000-01-01"
 END_DATE   = datetime.today().strftime("%Y-%m-%d")
 
 
-def _request_with_retry(url, retries=5, timeout=90):
+def _get_json(url, retries=5, timeout=90):
     for tentativa in range(1, retries + 1):
         try:
-            r = requests.get(url, timeout=timeout)
+            r = requests.get(url, headers=HEADERS, timeout=timeout)
             r.raise_for_status()
-            return r
-        except (requests.exceptions.ReadTimeout,
-                requests.exceptions.ConnectionError,
-                requests.exceptions.HTTPError) as e:
+            if not r.text.strip():
+                raise ValueError("resposta vazia")
+            return r.json()
+        except Exception as e:
             espera = 5 * tentativa
-            print(f"  tentativa {tentativa}/{retries} falhou ({e.__class__.__name__}). Esperando {espera}s...")
+            print(f"  tentativa {tentativa}/{retries} falhou ({e.__class__.__name__}: {e}). Esperando {espera}s...")
             time.sleep(espera)
     raise RuntimeError(f"Falhou após {retries} tentativas: {url}")
 
@@ -43,22 +49,33 @@ def get_fred(series_id):
         f"&observation_start={START_DATE}&observation_end={END_DATE}"
         f"&file_type=json"
     )
-    data = _request_with_retry(url).json()["observations"]
+    data = _get_json(url)["observations"]
     s = pd.Series({o["date"]: float(o["value"]) for o in data if o["value"] != "."})
     s.index = pd.to_datetime(s.index)
     return s
 
 
 def get_bcb(code):
-    di = "01/01/2000"
-    df = datetime.today().strftime("%d/%m/%Y")
-    url = (
-        f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{code}/dados"
-        f"?formato=json&dataInicial={di}&dataFinal={df}"
-    )
-    data = _request_with_retry(url).json()
-    s = pd.Series({r["data"]: float(r["valor"].replace(",", ".")) for r in data})
+    inicio = datetime(2000, 1, 1)
+    fim    = datetime.today()
+    pedacos = []
+
+    while inicio < fim:
+        prox = min(inicio + relativedelta(years=10), fim)
+        di = inicio.strftime("%d/%m/%Y")
+        df = prox.strftime("%d/%m/%Y")
+        url = (
+            f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{code}/dados"
+            f"?formato=json&dataInicial={di}&dataFinal={df}"
+        )
+        print(f"  BCB {code}: {di} a {df}")
+        data = _get_json(url)
+        pedacos.extend(data)
+        inicio = prox + relativedelta(days=1)
+
+    s = pd.Series({r["data"]: float(r["valor"].replace(",", ".")) for r in pedacos})
     s.index = pd.to_datetime(s.index, dayfirst=True)
+    s = s[~s.index.duplicated(keep="first")].sort_index()
     return s
 
 
