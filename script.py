@@ -20,14 +20,16 @@ FRED_SERIES = {
 }
 
 BCB_SERIES = {
-    "ind_prod_sa":  21859,  # PIM-PF dessazonalizado (funciona)
-    "ind_prod_nsa": 28503,  # PIM-PF sem ajuste (tentativa alternativa)
+    "ind_prod_sa":  21859,
+    "ind_prod_nsa": 28503,
     "selic":        432,
 }
 
 START_DATE = "2000-01-01"
 END_DATE   = datetime.today().strftime("%Y-%m-%d")
 
+
+# ─── COLETA ──────────────────────────────────────────────────
 
 def _get(url, retries=3, timeout=60):
     for tentativa in range(1, retries + 1):
@@ -88,6 +90,8 @@ df_usa = pd.DataFrame(fred).resample("ME").last()
 df_bra = pd.DataFrame(bcb).resample("ME").last()
 
 
+# ─── ANÁLISE DESCRITIVA (log) ────────────────────────────────
+
 def describe_pair(df, sa_col, nsa_col, label):
     print(f"\n--- {label} ---")
     if sa_col not in df.columns or nsa_col not in df.columns:
@@ -107,16 +111,15 @@ describe_pair(df_usa, "ind_prod_sa", "ind_prod_nsa", "Prod. Industrial EUA")
 describe_pair(df_bra, "ind_prod_sa", "ind_prod_nsa", "Prod. Industrial Brasil")
 
 
+# ─── GRÁFICOS ────────────────────────────────────────────────
+
 def plot_safe(serie_ou_df, ax, title, **kwargs):
-    """Plota só se tiver dados."""
     if isinstance(serie_ou_df, pd.Series):
         dados = serie_ou_df.dropna()
-        if dados.empty:
-            ax.set_title(f"{title} (sem dados)"); return
     else:
         dados = serie_ou_df.dropna(how="all")
-        if dados.empty:
-            ax.set_title(f"{title} (sem dados)"); return
+    if dados.empty:
+        ax.set_title(f"{title} (sem dados)"); return
     dados.plot(ax=ax, title=title, **kwargs)
 
 
@@ -126,7 +129,8 @@ fig.suptitle("Acompanhamento de Atividade e Juros — Brasil e EUA")
 plot_safe(df_usa[["ind_prod_sa", "ind_prod_nsa"]], axes[0, 0], "Prod. Industrial EUA")
 plot_safe(df_usa["fed_funds"],                    axes[0, 1], "Fed Funds (%)", color="firebrick")
 
-cols_bra = [c for c in ["ind_prod_sa", "ind_prod_nsa"] if c in df_bra.columns and df_bra[c].notna().any()]
+cols_bra = [c for c in ["ind_prod_sa", "ind_prod_nsa"]
+            if c in df_bra.columns and df_bra[c].notna().any()]
 if cols_bra:
     plot_safe(df_bra[cols_bra], axes[1, 0], "Prod. Industrial Brasil")
 else:
@@ -137,11 +141,80 @@ plot_safe(df_bra["selic"], axes[1, 1], "Selic (% a.a.)", color="seagreen")
 plt.tight_layout()
 plt.savefig("relatorio.png", dpi=150)
 
+
+# ─── ESTATÍSTICAS DESCRITIVAS ────────────────────────────────
+
+def estatisticas(df, label):
+    desc = df.describe().T
+    desc.columns = ["N", "Média", "Desvio", "Mínimo", "25%", "Mediana", "75%", "Máximo"]
+    desc["País"] = label
+    desc.index.name = "Série"
+    return desc.reset_index()
+
+
+def comparacao_sa_nsa(df, sa_col, nsa_col, label):
+    if sa_col not in df.columns or nsa_col not in df.columns:
+        return None
+    sa, nsa = df[sa_col].dropna().align(df[nsa_col].dropna(), join="inner")
+    if sa.empty:
+        return None
+    diff = sa - nsa
+    var_sa  = sa.pct_change(12).dropna() * 100
+    var_nsa = nsa.pct_change(12).dropna() * 100
+    return pd.DataFrame({
+        "Métrica": [
+            "Correlação SA vs NSA",
+            "Diferença média (SA − NSA)",
+            "Desvio padrão da diferença",
+            "Diferença mínima",
+            "Diferença máxima",
+            "Variação interanual média SA (%)",
+            "Variação interanual média NSA (%)",
+            "Período inicial",
+            "Período final",
+            "Nº de observações",
+        ],
+        "Valor": [
+            f"{sa.corr(nsa):.4f}",
+            f"{diff.mean():.4f}",
+            f"{diff.std():.4f}",
+            f"{diff.min():.4f}",
+            f"{diff.max():.4f}",
+            f"{var_sa.mean():.2f}",
+            f"{var_nsa.mean():.2f}",
+            f"{sa.index.min():%Y-%m}",
+            f"{sa.index.max():%Y-%m}",
+            f"{len(sa)}",
+        ],
+        "País": label,
+    })
+
+
+desc_usa = estatisticas(df_usa, "EUA")
+desc_bra = estatisticas(df_bra, "Brasil")
+desc_geral = pd.concat([desc_usa, desc_bra], ignore_index=True)
+
+comp_usa = comparacao_sa_nsa(df_usa, "ind_prod_sa", "ind_prod_nsa", "EUA")
+comp_bra = comparacao_sa_nsa(df_bra, "ind_prod_sa", "ind_prod_nsa", "Brasil")
+comparacao = pd.concat([c for c in [comp_usa, comp_bra] if c is not None], ignore_index=True)
+
+print("\n=== Estatísticas Descritivas ===")
+print(desc_geral.to_string(index=False))
+print("\n=== Comparação SA vs NSA ===")
+print(comparacao.to_string(index=False))
+
+
+# ─── EXPORTAÇÃO ──────────────────────────────────────────────
+
 with pd.ExcelWriter("relatorio_atividade_juros.xlsx", engine="openpyxl") as writer:
     df_usa.to_excel(writer, sheet_name="EUA")
     df_bra.to_excel(writer, sheet_name="Brasil")
+    desc_geral.to_excel(writer, sheet_name="Estatísticas", index=False)
+    comparacao.to_excel(writer, sheet_name="Comparação SA-NSA", index=False)
 
 df_usa.to_csv("eua.csv")
 df_bra.to_csv("brasil.csv")
+desc_geral.to_csv("estatisticas.csv", index=False)
+comparacao.to_csv("comparacao_sa_nsa.csv", index=False)
 
 print("\nArquivos gerados com sucesso.")
