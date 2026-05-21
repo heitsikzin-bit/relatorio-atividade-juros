@@ -9,9 +9,6 @@ permissions:
   contents: write
 
 jobs:
-  ...
-
-jobs:
   run:
     runs-on: ubuntu-latest
     steps:
@@ -22,18 +19,18 @@ jobs:
           python-version: "3.12"
 
       - name: Instalar dependências
-        run: pip install pandas requests matplotlib openpyxl
+        run: pip install pandas requests matplotlib openpyxl python-dateutil
 
       - name: Rodar script
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: python script.py
 
-           - name: Salvar arquivos no repositório
+      - name: Salvar arquivos no repositório
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add relatorio_atividade_juros.xlsx eua.csv brasil.csv estatisticas.csv comparacao_sa_nsa.csv relatorio.png
+          git add -A
           git diff --staged --quiet || git commit -m "Relatório $(date +%Y-%m)"
           git push
 
