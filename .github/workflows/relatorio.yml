@@ -2,11 +2,14 @@ name: Relatório Mensal
 
 on:
   schedule:
-    - cron: "0 12 5 * *"   # todo dia 5, 09:00 horário de Brasília
-  workflow_dispatch:        # botão para rodar manualmente
+    - cron: "0 12 5 * *"
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+jobs:
+  ...
 
 jobs:
   run:
