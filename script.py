@@ -81,9 +81,15 @@ def get_ibge_pim(variavel_id):
     if not payload:
         return pd.Series(dtype=float)
     serie_dict = payload[0]["resultados"][0]["series"][0]["serie"]
-    s = pd.Series({k: float(v) for k, v in serie_dict.items() if v not in ("", "...", "-")})
+    valores = {}
+    for k, v in serie_dict.items():
+        try:
+            valores[k] = float(v)
+        except (TypeError, ValueError):
+            continue
+    s = pd.Series(valores)
     s.index = pd.to_datetime(s.index, format="%Y%m")
-    return s
+    return s.sort_index()
 
 
 print("Baixando FRED...")
