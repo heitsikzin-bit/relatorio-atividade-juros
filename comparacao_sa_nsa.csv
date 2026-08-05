@@ -1,21 +1,21 @@
 Métrica,Valor,País
-Correlação SA vs NSA,0.9736,EUA
-Diferença média (SA − NSA),0.0093,EUA
-Desvio padrão da diferença,1.1106,EUA
+Correlação SA vs NSA,0.9737,EUA
+Diferença média (SA − NSA),0.0062,EUA
+Desvio padrão da diferença,1.1094,EUA
 Diferença mínima,-2.4170,EUA
 Diferença máxima,2.4566,EUA
 Variação interanual média SA (%),0.47,EUA
 Variação interanual média NSA (%),0.47,EUA
 Período inicial,2000-01,EUA
-Período final,2026-05,EUA
-Nº de observações,317,EUA
-Correlação SA vs NSA,0.7818,Brasil
-Diferença média (SA − NSA),-0.0918,Brasil
-Desvio padrão da diferença,6.9146,Brasil
+Período final,2026-06,EUA
+Nº de observações,318,EUA
+Correlação SA vs NSA,0.7827,Brasil
+Diferença média (SA − NSA),-0.0796,Brasil
+Desvio padrão da diferença,6.8782,Brasil
 Diferença mínima,-13.4000,Brasil
 Diferença máxima,12.1000,Brasil
 Variação interanual média SA (%),0.74,Brasil
-Variação interanual média NSA (%),0.71,Brasil
+Variação interanual média NSA (%),0.72,Brasil
 Período inicial,2002-01,Brasil
-Período final,2026-04,Brasil
-Nº de observações,292,Brasil
+Período final,2026-06,Brasil
+Nº de observações,294,Brasil
